@@ -24,9 +24,26 @@ local function cacheable_request(method, uri, conf)
   return false
 end
 
-local function get_cache_key(uri, conf)
-  -- should take into account req headers and querystring params
-  return uri
+local function get_cache_key(uri, headers, query_params, conf)
+  local cache_key = uri
+  
+  for _,param in ipairs(conf.cache_policy.vary_by_query_string_parameters) do
+    local query_value = query_params[param]
+    if query_value then
+      ngx.log(ngx.NOTICE, "varying cache key by query string ("..param..":"..query_value..")")
+      cache_key = cache_key..":"..param.."="..query_value
+    end
+  end
+
+  for _,header in ipairs(conf.cache_policy.vary_by_headers) do
+    local header_value = headers[header]
+    if header_value then
+      ngx.log(ngx.NOTICE, "varying cache key by matched header ("..header..":"..header_value..")")
+      cache_key = cache_key..":"..header.."="..header_value
+    end
+  end
+  
+  return cache_key
 end
 
 local function json_decode(json)
@@ -97,7 +114,7 @@ function CacheHandler:access(conf)
     return
   end
   
-  local cache_key = get_cache_key(uri, conf)  
+  local cache_key = get_cache_key(uri, ngx.req.get_headers(), ngx.req.get_uri_args(), conf)  
   local red, err = connect_to_redis(conf)
   if err then
     ngx_log(ngx.ERR, "failed to connect to Redis: ", err)
@@ -105,11 +122,16 @@ function CacheHandler:access(conf)
   end
 
   local cached_val, err = red:get(cache_key)
-  if res and res ~= ngx.null then
+  if cached_val and cached_val ~= ngx.null then
+    ngx.log(ngx.NOTICE, "cache hit")
     local val = json_decode(cached_val)
-    return responses.send(200, val.content, val.headers)
+    for k,v in pairs(val.headers) do
+      ngx.req.set_header(k, v)
+    end
+    return responses.send_HTTP_OK(val.content)
   end
-
+  
+  ngx.log(ngx.NOTICE, "cache miss")
   ngx.ctx.response_cache = {
     cache_key = cache_key
   }
