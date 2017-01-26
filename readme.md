@@ -24,7 +24,7 @@ their corresponding cache key.
 
 Query strings and headers are concatenated in the cache key in alphabetical order.
 
-request|cache Key
+request|cache key
 ---|---
 `curl /v1/users/wshirey?is_active`|`/v1/users/wshirey:is_active=true`
 `curl /v1/users/wshirey?foo=bar&is_active`|`/v1/users/wshirey:fizz=buzz:is_active=true`
