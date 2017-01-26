@@ -14,7 +14,7 @@ The plugin will only cache responses for GET request methods.
 The cache key will be a concatentation of the following items, in order, each delimited 
 with the `:` character
 
-1. The URI path (/)
+1. The URI path
 1. Query parameter and value (if defined in `config.vary_by_query_parameters`)
 1. Header name and value (if defined in `config.vary_by_headers`)
 
@@ -24,8 +24,8 @@ their corresponding cache key.
 
 Query strings and headers are concatenated in the cache key in alphabetical order.
 
-Request URL|Cache Key
--|-
+request|cache Key
+---|---
 `curl /v1/users/wshirey?is_active`|`/v1/users/wshirey:is_active=true`
 `curl /v1/users/wshirey?foo=bar&is_active`|`/v1/users/wshirey:fizz=buzz:is_active=true`
 `curl /v1/users/wshirey?foo=bar&foo=baz`|`/v1/users/wshirey:foo=bar,baz`
