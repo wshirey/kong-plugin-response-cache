@@ -27,10 +27,12 @@ end
 local function get_cache_key(uri, headers, query_params, conf)
   local cache_key = uri
   
+  table.sort(query_params)
   for _,param in ipairs(conf.cache_policy.vary_by_query_string_parameters) do
     local query_value = query_params[param]
     if query_value then
       if type(query_value) == "table" then
+        table.sort(query_value)
         query_value = table.concat(query_value, ",")
       end
       ngx.log(ngx.NOTICE, "varying cache key by query string ("..param..":"..query_value..")")
@@ -38,10 +40,12 @@ local function get_cache_key(uri, headers, query_params, conf)
     end
   end
 
+  table.sort(headers)
   for _,header in ipairs(conf.cache_policy.vary_by_headers) do
     local header_value = headers[header]
     if header_value then
       if type(header_value) == "table" then
+        table.sort(header_value)
         header_value = table.concat(header_value, ",")
       end
       ngx.log(ngx.NOTICE, "varying cache key by matched header ("..header..":"..header_value..")")
