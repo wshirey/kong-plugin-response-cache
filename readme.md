@@ -1,13 +1,13 @@
 # kong-plugin-response-cache
 
-A Kong plugin that will cache responses in redis
+A Kong plugin that will cache JSON responses in redis
 
 ## How it works
-When enabled, this plugin will cache response bodies and headers that match the 
+When enabled, this plugin will cache JSON response bodies and headers that match the 
 specified URI list into redis. The duration for the cached response is set in 
-redis and Kong will continue to use the cached response until redis remove it.
+redis and Kong will continue to use the cached response until redis removes it.
 
-The plugin will only cache responses for GET request methods.
+The plugin will only cache JSON responses for GET request methods.
 
 ## Cache Key computation
 
