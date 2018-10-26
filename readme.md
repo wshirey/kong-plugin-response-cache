@@ -27,7 +27,7 @@ Query strings and headers are concatenated in the cache key in alphabetical orde
 request|cache key
 ---|---
 `curl /v1/users/wshirey?is_active`|`/v1/users/wshirey:is_active=true`
-`curl /v1/users/wshirey?foo=bar&is_active`|`/v1/users/wshirey:fizz=buzz:is_active=true`
+`curl /v1/users/wshirey?foo=bar&is_active`|`/v1/users/wshirey:foo=bar:is_active=true`
 `curl /v1/users/wshirey?foo=bar&foo=baz`|`/v1/users/wshirey:foo=bar,baz`
 `curl -H "X-Custom-ID: 123" /v1/users/wshirey?is_active=true`|`/v1/users/wshirey:is_active=true:x-custom-id=123`
 `curl -H "X-Custom-ID: 123" -H "X-User-ID: 456" /v1/users/wshirey?is_active=true`|`/v1/users/wshirey:is_active=true:x-custom-id=123:x-user-id=456`
