@@ -9,6 +9,7 @@ local is_json_body = header_filter.is_json_body
 
 local cjson_decode = require("cjson").decode
 local cjson_encode = require("cjson").encode
+local CACHE_HEADER = 'X-Kong-Cache-Status'
 
 local function cacheable_request(method, uri, conf)
   if method ~= "GET" then
@@ -119,7 +120,7 @@ function CacheHandler:access(conf)
   CacheHandler.super.access(self)
   
   local uri = ngx.var.uri
-  if not cacheable_request(req_get_method(), uri, conf) then
+  local cache_status
     ngx.log(ngx.NOTICE, "not cacheable")
     return
   end
@@ -138,10 +139,11 @@ function CacheHandler:access(conf)
     for k,v in pairs(val.headers) do
       ngx.req.set_header(k, v)
     end
-    return responses.send_HTTP_OK(val.content)
+    ngx.header[CACHE_HEADER] = cache_status
   end
 
   ngx.log(ngx.NOTICE, "cache miss")
+  ngx.header[CACHE_HEADER] = cache_status
   ngx.ctx.response_cache = {
     cache_key = cache_key
   }
