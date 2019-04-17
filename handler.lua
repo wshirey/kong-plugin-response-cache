@@ -9,10 +9,19 @@ local is_json_body = header_filter.is_json_body
 
 local cjson_decode = require("cjson").decode
 local cjson_encode = require("cjson").encode
+local CACHE_HEADER = 'X-Kong-Cache-Status'
 
-local function cacheable_request(method, uri, conf)
+local status_code_bypass = { ngx.HTTP_BAD_GATEWAY, ngx.HTTP_SERVICE_UNAVAILABLE, ngx.HTTP_GATEWAY_TIMEOUT, ngx.HTTP_INTERNAL_SERVER_ERROR, ngx.HTTP_METHOD_NOT_IMPLEMENTED }
+
+local function cacheable_request(method, uri, conf, status_code)
   if method ~= "GET" then
     return false
+  end
+  
+  for _,v in ipairs(status_code_bypass) do
+    if v == status_code then
+      return false
+    end
   end
 
   for _,v in ipairs(conf.cache_policy.uris) do
@@ -61,6 +70,8 @@ local function json_decode(json)
     local status, res = pcall(cjson_decode, json)
     if status then
       return res
+    else 
+      ngx.log(ngx.ERR, "[response-cache] error decoding json: ", status, res)
     end
   end
 end
@@ -70,6 +81,8 @@ local function json_encode(table)
     local status, res = pcall(cjson_encode, table)
     if status then
       return res
+    else
+      ngx.log(ngx.ERR, "[response-cache] error encoding json: ", status, res)
     end
   end
 end
@@ -119,8 +132,10 @@ function CacheHandler:access(conf)
   CacheHandler.super.access(self)
   
   local uri = ngx.var.uri
-  if not cacheable_request(req_get_method(), uri, conf) then
+  local cache_status
+  if not cacheable_request(req_get_method(), uri, conf, ngx.status) then
     ngx.log(ngx.NOTICE, "not cacheable")
+    cache_status = 'NOCACHE'
     return
   end
   
@@ -134,16 +149,25 @@ function CacheHandler:access(conf)
   local cached_val, err = red:get(cache_key)
   if cached_val and cached_val ~= ngx.null then
     ngx.log(ngx.NOTICE, "cache hit")
+    cache_status = 'HIT'
     local val = json_decode(cached_val)
     for k,v in pairs(val.headers) do
-      ngx.req.set_header(k, v)
+      ngx.header[k] = v
     end
-    return responses.send_HTTP_OK(val.content)
+    ngx.header[CACHE_HEADER] = cache_status
+    ngx.status = val.status_code
+    ngx.print(val.content)
+    return ngx.exit(val.status_code)
   end
 
   ngx.log(ngx.NOTICE, "cache miss")
+  cache_status = 'MISS'
+  ngx.ctx.rt_body_chunks = {}
+  ngx.ctx.rt_body_chunk_number = 1
+  ngx.header[CACHE_HEADER] = cache_status
   ngx.ctx.response_cache = {
-    cache_key = cache_key
+    cache_key = cache_key,
+    cache_status = cache_status
   }
 end
 
@@ -165,19 +189,29 @@ function CacheHandler:body_filter(conf)
   if not ctx then
     return
   end
-
-  local chunk = ngx.arg[1]
-  local eof = ngx.arg[2]
   
-  local res_body = ctx and ctx.res_body or ""
-  res_body = res_body .. (chunk or "")
-  ctx.res_body = res_body
+  local chunk, eof = ngx.arg[1], ngx.arg[2]
+  local rt_body_chunks = ngx.ctx.rt_body_chunks
+  local rt_body_chunk_number = ngx.ctx.rt_body_chunk_number
+
   if eof then
-    local content = json_decode(ctx.res_body)
-    local value = { content = content, headers = ctx.headers }
-    local value_json = json_encode(value)
-    ngx.timer.at(0, red_set, ctx.cache_key, value_json, conf)
+      local body = table.concat(rt_body_chunks)
+      ngx.arg[1] = body
+      local value = { content = body, headers = ctx.headers, status_code = ngx.status }
+      local value_json = json_encode(value)
+      local ok, err = ngx.timer.at(0, red_set, ctx.cache_key, value_json, conf)
+      if not ok then
+        ngx.log(ngx.ERR, "[response-cache] failed to create timer: ", err)
+      end
+  else
+      rt_body_chunks[rt_body_chunk_number] = chunk
+      rt_body_chunk_number = rt_body_chunk_number + 1
+      ngx.arg[1] = nil
+      ngx.ctx.rt_body_chunks = rt_body_chunks
+      ngx.ctx.rt_body_chunk_number = rt_body_chunk_number
   end
 end
+
+CacheHandler.PRIORITY = 10
 
 return CacheHandler
