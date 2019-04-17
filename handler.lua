@@ -11,9 +11,17 @@ local cjson_decode = require("cjson").decode
 local cjson_encode = require("cjson").encode
 local CACHE_HEADER = 'X-Kong-Cache-Status'
 
-local function cacheable_request(method, uri, conf)
+local status_code_bypass = { ngx.HTTP_BAD_GATEWAY, ngx.HTTP_SERVICE_UNAVAILABLE, ngx.HTTP_GATEWAY_TIMEOUT, ngx.HTTP_INTERNAL_SERVER_ERROR, ngx.HTTP_METHOD_NOT_IMPLEMENTED }
+
+local function cacheable_request(method, uri, conf, status_code)
   if method ~= "GET" then
     return false
+  end
+  
+  for _,v in ipairs(status_code_bypass) do
+    if v == status_code then
+      return false
+    end
   end
 
   for _,v in ipairs(conf.cache_policy.uris) do
