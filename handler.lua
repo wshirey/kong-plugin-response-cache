@@ -212,4 +212,6 @@ function CacheHandler:body_filter(conf)
   end
 end
 
+CacheHandler.PRIORITY = 10
+
 return CacheHandler
