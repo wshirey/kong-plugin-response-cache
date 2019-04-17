@@ -133,7 +133,9 @@ function CacheHandler:access(conf)
   
   local uri = ngx.var.uri
   local cache_status
+  if not cacheable_request(req_get_method(), uri, conf, ngx.status) then
     ngx.log(ngx.NOTICE, "not cacheable")
+    cache_status = 'NOCACHE'
     return
   end
   
@@ -147,17 +149,25 @@ function CacheHandler:access(conf)
   local cached_val, err = red:get(cache_key)
   if cached_val and cached_val ~= ngx.null then
     ngx.log(ngx.NOTICE, "cache hit")
+    cache_status = 'HIT'
     local val = json_decode(cached_val)
     for k,v in pairs(val.headers) do
-      ngx.req.set_header(k, v)
+      ngx.header[k] = v
     end
     ngx.header[CACHE_HEADER] = cache_status
+    ngx.status = val.status_code
+    ngx.print(val.content)
+    return ngx.exit(val.status_code)
   end
 
   ngx.log(ngx.NOTICE, "cache miss")
+  cache_status = 'MISS'
+  ngx.ctx.rt_body_chunks = {}
+  ngx.ctx.rt_body_chunk_number = 1
   ngx.header[CACHE_HEADER] = cache_status
   ngx.ctx.response_cache = {
-    cache_key = cache_key
+    cache_key = cache_key,
+    cache_status = cache_status
   }
 end
 
@@ -179,18 +189,26 @@ function CacheHandler:body_filter(conf)
   if not ctx then
     return
   end
-
-  local chunk = ngx.arg[1]
-  local eof = ngx.arg[2]
   
-  local res_body = ctx and ctx.res_body or ""
-  res_body = res_body .. (chunk or "")
-  ctx.res_body = res_body
+  local chunk, eof = ngx.arg[1], ngx.arg[2]
+  local rt_body_chunks = ngx.ctx.rt_body_chunks
+  local rt_body_chunk_number = ngx.ctx.rt_body_chunk_number
+
   if eof then
-    local content = json_decode(ctx.res_body)
-    local value = { content = content, headers = ctx.headers }
-    local value_json = json_encode(value)
-    ngx.timer.at(0, red_set, ctx.cache_key, value_json, conf)
+      local body = table.concat(rt_body_chunks)
+      ngx.arg[1] = body
+      local value = { content = body, headers = ctx.headers, status_code = ngx.status }
+      local value_json = json_encode(value)
+      local ok, err = ngx.timer.at(0, red_set, ctx.cache_key, value_json, conf)
+      if not ok then
+        ngx.log(ngx.ERR, "[response-cache] failed to create timer: ", err)
+      end
+  else
+      rt_body_chunks[rt_body_chunk_number] = chunk
+      rt_body_chunk_number = rt_body_chunk_number + 1
+      ngx.arg[1] = nil
+      ngx.ctx.rt_body_chunks = rt_body_chunks
+      ngx.ctx.rt_body_chunk_number = rt_body_chunk_number
   end
 end
 
