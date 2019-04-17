@@ -70,6 +70,8 @@ local function json_decode(json)
     local status, res = pcall(cjson_decode, json)
     if status then
       return res
+    else 
+      ngx.log(ngx.ERR, "[response-cache] error decoding json: ", status, res)
     end
   end
 end
@@ -79,6 +81,8 @@ local function json_encode(table)
     local status, res = pcall(cjson_encode, table)
     if status then
       return res
+    else
+      ngx.log(ngx.ERR, "[response-cache] error encoding json: ", status, res)
     end
   end
 end
